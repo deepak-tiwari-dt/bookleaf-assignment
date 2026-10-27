@@ -1,89 +1,105 @@
-# BookLeaf Support Portal (MERN)
+# BookLeaf Author Support Portal
 
-React author and operations portals backed by an Express REST API and MongoDB.
+The repository contains two independent applications for separate Vercel projects:
 
-## Requirements and local setup
+- `client/` — React and Vite author and operations portals.
+- `server/` — Express REST API, MongoDB models, and sample data.
 
-- Node.js 18+
-- MongoDB Community Server running locally or a MongoDB Atlas URI
+## Run locally
+
+Requirements: Node.js 20+ and a local MongoDB instance or MongoDB Atlas URI.
 
 ```sh
 npm install
-cp .env.example .env
-# Set MONGODB_URI and SESSION_SECRET in .env if needed.
+npm --prefix client install
+npm --prefix server install
+cp server/.env.example server/.env
+# Set MONGODB_URI and SESSION_SECRET in server/.env.
 npm run seed
 npm run dev
 ```
 
-Open <http://localhost:5173>. Vite proxies `/api` to Express at `http://localhost:5001`. In production, `npm run build` creates the React bundle in `dist`; set `NODE_ENV=production` and run `npm start` to serve that bundle and the API from port 5001.
+Open <http://localhost:5173>. Vite proxies `/api` to Express at <http://localhost:5001>. Demo password: `demo123`; operations account: `admin@bookleaf.com`.
 
-The Express API fails to start until MongoDB is available. Set `MONGODB_URI` to a local or Atlas connection string. `.env` is ignored by git.
+The root npm scripts are local development helpers. Vercel installs each project from its own root directory.
 
-## Run with Docker
+## Deploy to Vercel
 
-With Docker Compose installed, run `docker compose up --build`. The app is served at <http://localhost:5001> and MongoDB data is stored in a named volume. The Compose defaults are for local evaluation only; set `SESSION_SECRET`, `DEMO_PASSWORD`, and `OPENAI_API_KEY` in the environment for your deployment. Use `COOKIE_SECURE=true` behind HTTPS.
+Import the same Git repository twice in Vercel. Set the **Root Directory** separately for each project:
 
-## Demo accounts
+| Project | Root Directory | Build configuration |
+|---|---|---|
+| Frontend | `client` | Vite build; output directory `dist` |
+| API | `server` | Express entry point `app.js` |
 
-All sample authors can sign in using the email recorded in `data.json` and password `demo123`. The operations account is `admin@bookleaf.com` / `demo123`. Startup and `npm run seed` synchronize authors and books from the JSON, add the operations account, and preserve ticket data. Tickets start empty and are created through the author portal. Set `DEMO_PASSWORD` before the first seed to use a different shared demo password.
+The API is exported from `server/app.js`. `server/dev.js` is only for local development; the Vercel deployment does not seed the database on startup.
 
-## Project layout
+Set these project environment variables:
 
-- `src/` - React SPA, author dashboard, ticket center, operations console, and styles.
-- `server/app.js` - Express app, MongoDB connection helper, session middleware, and REST routes.
-- `server/index.js` - local Express bootstrap and sample-data seed.
-- `netlify/functions/api.js` - Netlify Functions entry point for the Express API.
-- `server/models.js` - Mongoose author/book and ticket/message/note schemas and indexes.
-- `server/ticketRules.js` - AI classification/priority scoring with deterministic fallback.
-- `server/knowledgeBase.js` - compact policy context for reply drafting.
-- `server/seed.js` - imports the supplied sample dataset and seeds demo users/tickets.
-- `data.json` - supplied sample records, read by the server seed only (not served by Express).
+| Project | Variable | Value |
+|---|---|---|
+| Frontend | `VITE_API_URL` | API project's origin, e.g. `https://bookleaf-api.vercel.app` (no trailing slash) |
+| API | `MONGODB_URI` | MongoDB Atlas connection string |
+| API | `SESSION_SECRET` | Long random secret |
+| API | `CORS_ORIGINS` | Exact frontend origin; comma-separated if allowing additional origins |
+| API | `COOKIE_SECURE` | `true` |
+| API | `SESSION_COOKIE_SAME_SITE` | `none` for separate default `*.vercel.app` project domains |
+| API | `OPENAI_API_KEY` | Optional; enables AI classification and response drafts |
+| API | `OPENAI_MODEL` | Optional; defaults to `gpt-4o-mini` |
 
-Sessions are stored in MongoDB using `connect-mongo`; cookies are HTTP-only and SameSite Strict. Author routes scope books and tickets to the logged-in author's ID. Operations-only status/category/priority changes, assignment, drafts, and private notes are protected by role middleware. Ticket lists sort by priority then age and refresh in the client every 15 seconds.
+For the most reliable session cookies, use custom frontend and API domains under the same parent domain (such as `authors.example.com` and `api.example.com`) and set `SESSION_COOKIE_SAME_SITE=strict`. Browsers can restrict cookies between separate Vercel domains.
 
-Ticket attachments are stored as binary data on the ticket in MongoDB and can only be downloaded by its author or an admin. The form accepts up to 3 PDF, JPEG, PNG, or WebP files, 2 MB each and 4 MB combined. The API checks file signatures, not only browser-supplied MIME types. For production at larger scale, move file bytes to private object storage and retain only metadata in MongoDB.
-
-## REST API
-
-All routes except `POST /api/auth/login` require a session. JSON errors include a useful message. Invalid fields return `422`, unauthorized roles return `403`, and missing/foreign tickets return `404`.
-
-| Method | Endpoint | Access | Purpose |
-|---|---|---|---|
-| POST | `/api/auth/login` | Public | Start session with `{email,password}` |
-| POST | `/api/auth/logout` | Signed in | Destroy session |
-| GET | `/api/auth/me` | Signed in | Current identity and role |
-| GET | `/api/auth/demo-accounts` | Public demo selector | Names and emails for the JSON-seeded sample accounts |
-| GET | `/api/authors` | Admin | Complete author and book directory from MongoDB |
-| GET | `/api/books` | Author | Own book catalog; admin may pass `?authorId=AUTH001` |
-| GET | `/api/tickets` | Signed in | Author's tickets or admin queue; filters: `status`, `category`, `priority`, `from`, `to`, `q` |
-| POST | `/api/tickets` | Author | Create ticket with `bookId`, `subject`, `description`; category and priority use AI when configured, otherwise rules fallback |
-| GET | `/api/tickets/:ticketId` | Signed in | Ticket and messages, scoped to owner for authors |
-| GET | `/api/tickets/:ticketId/attachments/:attachmentId` | Signed in | Download attachment when the requester owns its ticket or is an admin |
-| PATCH | `/api/tickets/:ticketId` | Admin | Change `status`, `category`, `priority`, `assignee` |
-| POST | `/api/tickets/:ticketId/draft` | Admin | Generate a policy-grounded reply draft |
-| POST | `/api/tickets/:ticketId/reply` | Signed in | Add an author message or send an admin reply |
-| POST | `/api/tickets/:ticketId/notes` | Admin | Add a private operations note |
-
-## AI classification and reply drafting
-
-Set `OPENAI_API_KEY` to enable server-side OpenAI Chat Completions for category/priority classification and admin reply drafts; `OPENAI_MODEL` defaults to `gpt-4o-mini`. Classification asks for a constrained category, priority, and confidence and validates the result. The API sends only the new ticket text for classification, and only the selected ticket, relevant book ledger fields, and concise BookLeaf policy context for a draft. API keys remain on the server. Missing credentials, timeouts, provider errors, or invalid results fall back to deterministic ticket rules and category-specific grounded draft templates; admins can always edit and send a manual response. See `APPROACH.md` for the model and cost strategy.
-
-## Deployment
-
-`Dockerfile` builds the React bundle and runs the Express/MongoDB application in one container. `docker-compose.yml` includes a MongoDB service for local deployment. For a public demo, deploy the container and a managed MongoDB database with a persistent connection URI, HTTPS, a long random `SESSION_SECRET`, and optional server-side `OPENAI_API_KEY`. The app does not include a hosting provider account or publish itself; configure these values in your chosen host before sharing a live URL.
-
-### Deploy to Netlify
-
-`netlify.toml` builds the Vite app to `dist`, deploys the Express API as a Netlify Function, rewrites `/api/*` to that function, and falls back to `index.html` for SPA routes. Connect the repository to Netlify and deploy from the project root. Set these in **Project configuration → Environment variables** with Functions scope: `MONGODB_URI` (Atlas connection string), `SESSION_SECRET` (long random value), and `COOKIE_SECURE=true`. Optionally set `OPENAI_API_KEY` and `OPENAI_MODEL`. Do not put secrets in `netlify.toml`; Netlify configuration-file variables are not exposed to Functions at runtime.
-
-Seed the Netlify database once from a trusted machine with network access to MongoDB Atlas:
+Seed the hosted database once from a machine that can reach MongoDB Atlas:
 
 ```sh
 MONGODB_URI="your-atlas-connection-string" DEMO_PASSWORD="demo123" npm run seed
 ```
 
-The Function does not seed on each cold start. Confirm Atlas network access allows Netlify Function connections. Netlify Functions have a 6 MB buffered request/response limit, so the upload limit is 4 MB combined to leave room for Base64 encoding overhead.
+Allow the API deployment to connect to your MongoDB host. Vercel Functions limit request payload size, so attachments are capped at 3 MB combined to leave room for Base64 encoding.
+
+## Sample accounts
+
+The supplied dataset in `server/data.json` seeds 10 authors and 18 books. Each author signs in with the email in that file. Operations account: `admin@bookleaf.com`. The default shared password is `demo123`; set `DEMO_PASSWORD` when seeding to use a different password.
+
+## Project layout
+
+- `client/src/` — React author dashboard, support center, operations console, and styles.
+- `client/vercel.json` — SPA fallback for frontend deep links.
+- `client/.env.example` — frontend API URL example.
+- `server/app.js` — Express API entry point for Vercel.
+- `server/dev.js` — local API bootstrap.
+- `server/models.js` — Mongoose schemas and indexes.
+- `server/ticketRules.js` — AI classification and deterministic fallback.
+- `server/knowledgeBase.js` — BookLeaf policy context for draft replies.
+- `server/seed.js` and `server/data.json` — sample data import.
+
+## API overview
+
+All routes except login and the demo-account selector require a session. Authors can only read their own books and tickets. Admin-only routes are protected by role checks.
+
+| Method | Endpoint | Access | Purpose |
+|---|---|---|---|
+| POST | `/api/auth/login` | Public | Start a session |
+| POST | `/api/auth/logout` | Signed in | End a session |
+| GET | `/api/auth/me` | Signed in | Get the current account |
+| GET | `/api/auth/demo-accounts` | Public | List seeded demo accounts |
+| GET | `/api/books` | Author | List the author's books |
+| GET | `/api/authors` | Admin | Browse authors and their books |
+| GET | `/api/tickets` | Signed in | List tickets with filters |
+| POST | `/api/tickets` | Author | Create a ticket and optional attachments |
+| GET | `/api/tickets/:ticketId` | Signed in | Read a ticket and conversation |
+| GET | `/api/tickets/:ticketId/attachments/:attachmentId` | Signed in | Download an authorized attachment |
+| PATCH | `/api/tickets/:ticketId` | Admin | Update ticket status, category, priority, or assignee |
+| POST | `/api/tickets/:ticketId/draft` | Admin | Generate a policy-grounded response draft |
+| POST | `/api/tickets/:ticketId/reply` | Signed in | Add an author or admin response |
+| POST | `/api/tickets/:ticketId/notes` | Admin | Add a private operations note |
+
+## AI and uploads
+
+Set `OPENAI_API_KEY` to enable server-side classification, priority scoring, and response drafting. `OPENAI_MODEL` defaults to `gpt-4o-mini`. Classification sends only the new ticket text; drafting sends the selected ticket, relevant book facts, and compact policy context. Without a key or when the provider fails, deterministic rules and grounded templates keep the workflow available.
+
+Attachments are stored in MongoDB, checked by file signature, and downloadable only by the ticket's author or an admin. The form accepts up to 3 PDF, JPEG, PNG, or WebP files, 1.5 MB each and 3 MB combined. For production at larger scale, move files to private object storage and scan them before use.
 
 ## Known limitations
 
-This is an evaluation prototype. Demo authors share one password; there is no password recovery or account registration. Ticket updates use polling rather than WebSockets/SSE. For production, use individual password lifecycle, request throttling/CSRF protections appropriate to deployment, audit events, attachment malware scanning and private object storage, delivery notifications, and monitoring. Deploy behind HTTPS with managed MongoDB and secrets to create an external demo URL.
+Demo authors share a password. There is no account registration or password recovery. Ticket updates use 15-second polling. Before production, add individual account onboarding, CSRF and rate controls, durable audit trails, attachment scanning, notifications, and monitoring.

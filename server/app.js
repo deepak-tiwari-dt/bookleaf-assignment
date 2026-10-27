@@ -9,24 +9,46 @@ import { knowledgeBase } from './knowledgeBase.js';
 
 const app = express();
 const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/bookleaf_support';
-app.disable('x-powered-by'); app.use(express.json({ limit: '6mb' }));
-if (process.env.NODE_ENV === 'production') app.set('trust proxy', 1);
-app.use(session({
-  name: 'bookleaf.sid', secret: process.env.SESSION_SECRET || 'dev-only-change-this-session-secret',
-  resave: false, saveUninitialized: false, store: MongoStore.create({ mongoUrl: mongoUri, collectionName: 'sessions' }),
-  cookie: { httpOnly: true, sameSite: 'strict', secure: process.env.COOKIE_SECURE ? process.env.COOKIE_SECURE === 'true' : process.env.NODE_ENV === 'production', maxAge: 8*60*60*1000 }
-}));
-
 const requireAuth = (req,res,next) => req.session.user ? next() : res.status(401).json({error:'Sign in required'});
 const requireRole = role => (req,res,next) => req.session.user?.role===role ? next() : res.status(req.session.user?403:401).json({error:req.session.user?'This action is not allowed for your account':'Sign in required'});
 const asyncRoute = fn => (req,res,next) => Promise.resolve(fn(req,res,next)).catch(next);
 let connectionPromise;
 export function connectDatabase(){
   if(process.env.NODE_ENV==='production'&&!process.env.SESSION_SECRET)throw new Error('SESSION_SECRET is required in production');
+  if(process.env.NODE_ENV==='production'&&!process.env.MONGODB_URI)throw new Error('MONGODB_URI is required in production');
   if(mongoose.connection.readyState===1)return Promise.resolve(mongoose.connection);
   if(!connectionPromise)connectionPromise=mongoose.connect(mongoUri).catch(error=>{connectionPromise=null;throw error;});
   return connectionPromise;
 }
+
+const allowedOrigins=new Set([
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  ...(process.env.CORS_ORIGINS||'').split(',').map(origin=>origin.trim()).filter(Boolean)
+]);
+app.disable('x-powered-by');
+app.set('trust proxy', 1);
+app.use((req,res,next)=>{
+  const origin=req.get('origin');
+  if(origin){
+    if(!allowedOrigins.has(origin))return res.status(403).json({error:'This client origin is not allowed'});
+    res.setHeader('Access-Control-Allow-Origin',origin);
+    res.setHeader('Access-Control-Allow-Credentials','true');
+    res.setHeader('Vary','Origin');
+    res.setHeader('Access-Control-Allow-Methods','GET,POST,PATCH,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers','Content-Type');
+  }
+  if(req.method==='OPTIONS')return res.sendStatus(204);
+  next();
+});
+app.use(express.json({ limit: '4.3mb' }));
+app.use(asyncRoute(async(_req,_res,next)=>{await connectDatabase();next();}));
+const cookieSameSite=process.env.SESSION_COOKIE_SAME_SITE||'lax';
+app.use(session({
+  name: 'bookleaf.sid', secret: process.env.SESSION_SECRET || 'dev-only-change-this-session-secret',
+  resave: false, saveUninitialized: false, store: MongoStore.create({ mongoUrl: mongoUri, collectionName: 'sessions' }),
+  cookie: { httpOnly: true, sameSite: cookieSameSite, secure: process.env.COOKIE_SECURE ? process.env.COOKIE_SECURE === 'true' : process.env.NODE_ENV === 'production', maxAge: 8*60*60*1000 }
+}));
 const publicTicket = (ticket, role) => {
   const t=ticket.toObject?ticket.toObject():ticket;
   if(role!=='admin')delete t.notes;
@@ -34,9 +56,9 @@ const publicTicket = (ticket, role) => {
   return t;
 };
 const allowedAttachmentTypes = new Set(['image/jpeg','image/png','image/webp','application/pdf']);
-const maxAttachmentSize = 2 * 1024 * 1024;
+const maxAttachmentSize = 1.5 * 1024 * 1024;
 const maxAttachments = 3;
-const maxCombinedAttachmentSize = 4 * 1024 * 1024;
+const maxCombinedAttachmentSize = 3 * 1024 * 1024;
 function validAttachmentContent(type,data){
   if(type==='image/jpeg')return data[0]===0xff&&data[1]===0xd8&&data[2]===0xff;
   if(type==='image/png')return data.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
@@ -95,9 +117,9 @@ app.post('/api/tickets', requireRole('author'), asyncRoute(async(req,res)=>{
     const encoded=String(file?.data||'').replace(/^data:[^,]*;base64,/,'');
     if(!name||!allowedAttachmentTypes.has(mimeType)||!/^[A-Za-z0-9+/]*={0,2}$/.test(encoded))return res.status(422).json({error:'Attachments must be PDF, JPEG, PNG, or WebP files'});
     const data=Buffer.from(encoded,'base64');
-    if(!data.length||data.length>maxAttachmentSize||data.toString('base64').replace(/=+$/,'')!==encoded.replace(/=+$/,'')||!validAttachmentContent(mimeType,data))return res.status(422).json({error:'Each attachment must be a valid PDF, JPEG, PNG, or WebP file up to 2 MB'});
+    if(!data.length||data.length>maxAttachmentSize||data.toString('base64').replace(/=+$/,'')!==encoded.replace(/=+$/,'')||!validAttachmentContent(mimeType,data))return res.status(422).json({error:'Each attachment must be a valid PDF, JPEG, PNG, or WebP file up to 1.5 MB'});
     attachmentTotal+=data.length;
-    if(attachmentTotal>maxCombinedAttachmentSize)return res.status(422).json({error:'Combined attachments must be 4 MB or smaller'});
+    if(attachmentTotal>maxCombinedAttachmentSize)return res.status(422).json({error:'Combined attachments must be 3 MB or smaller'});
     attachments.push({name,mimeType,size:data.length,data});
   }
   const author=await Author.findOne({author_id:req.session.user.id});

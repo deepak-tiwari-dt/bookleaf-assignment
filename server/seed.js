@@ -7,7 +7,7 @@ import mongoose from 'mongoose';
 import { Author, Ticket } from './models.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const sample = JSON.parse(fs.readFileSync(path.join(here, '..', 'data.json'), 'utf8'));
+const sample = JSON.parse(fs.readFileSync(path.join(here, 'data.json'), 'utf8'));
 const passwordHash = await bcrypt.hash(process.env.DEMO_PASSWORD || 'demo123', 10);
 
 export async function seedData() {
