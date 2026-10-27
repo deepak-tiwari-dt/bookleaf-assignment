@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "nodemon --watch . dev.js",
+    "start": "node start.js",
     "seed": "node seed.js"
   },
   "dependencies": {

@@ -3,11 +3,15 @@ import session from 'express-session';
 import MongoStore from 'connect-mongo';
 import mongoose from 'mongoose';
 import bcrypt from 'bcryptjs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Author, Ticket } from './models.js';
 import { categories, priorities, classifyTicket } from './ticketRules.js';
 import { knowledgeBase } from './knowledgeBase.js';
 
 const app = express();
+const here = path.dirname(fileURLToPath(import.meta.url));
+const clientDist = path.resolve(here, '../client/dist');
 const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/bookleaf_support';
 const requireAuth = (req,res,next) => req.session.user ? next() : res.status(401).json({error:'Sign in required'});
 const requireRole = role => (req,res,next) => req.session.user?.role===role ? next() : res.status(req.session.user?403:401).json({error:req.session.user?'This action is not allowed for your account':'Sign in required'});
@@ -31,12 +35,15 @@ app.set('trust proxy', 1);
 app.use((req,res,next)=>{
   const origin=req.get('origin');
   if(origin){
-    if(!allowedOrigins.has(origin))return res.status(403).json({error:'This client origin is not allowed'});
-    res.setHeader('Access-Control-Allow-Origin',origin);
-    res.setHeader('Access-Control-Allow-Credentials','true');
-    res.setHeader('Vary','Origin');
-    res.setHeader('Access-Control-Allow-Methods','GET,POST,PATCH,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers','Content-Type');
+    const sameOrigin=origin===`${req.protocol}://${req.get('host')}`;
+    if(!sameOrigin&&!allowedOrigins.has(origin))return res.status(403).json({error:'This client origin is not allowed'});
+    if(!sameOrigin){
+      res.setHeader('Access-Control-Allow-Origin',origin);
+      res.setHeader('Access-Control-Allow-Credentials','true');
+      res.setHeader('Vary','Origin');
+      res.setHeader('Access-Control-Allow-Methods','GET,POST,PATCH,OPTIONS');
+      res.setHeader('Access-Control-Allow-Headers','Content-Type');
+    }
   }
   if(req.method==='OPTIONS')return res.sendStatus(204);
   next();
@@ -76,6 +83,7 @@ app.post('/api/auth/login', asyncRoute(async(req,res)=>{
 }));
 app.post('/api/auth/logout', requireAuth, (req,res)=>req.session.destroy(()=>res.clearCookie('bookleaf.sid',{sameSite:'strict'}).json({ok:true})));
 app.get('/api/auth/me', requireAuth, (req,res)=>res.json({user:req.session.user}));
+app.get('/api/health', (_req,res)=>res.json({status:'ok',database:mongoose.connection.readyState===1?'connected':'disconnected'}));
 app.get('/api/auth/demo-accounts', asyncRoute(async(_req,res)=>{
   const accounts=await Author.find({},'author_id name email role').sort({role:1,name:1}).lean();
   res.json({accounts:accounts.map(({author_id,name,email,role})=>({id:author_id,name,email,role}))});
@@ -173,6 +181,10 @@ app.post('/api/tickets/:id/notes', requireRole('admin'), asyncRoute(async(req,re
 }));
 
 app.use('/api',(_req,res)=>res.status(404).json({error:'API endpoint not found'}));
+if(process.env.NODE_ENV==='production'){
+  app.use(express.static(clientDist));
+  app.get('*',(_req,res)=>res.sendFile(path.join(clientDist,'index.html')));
+}
 app.use((err,_req,res,_next)=>{console.error(err);if(err.type==='entity.too.large')return res.status(413).json({error:'Request is too large; reduce attachment size and try again'});if(err instanceof mongoose.Error.ValidationError)return res.status(422).json({error:'Ticket data did not pass validation'});res.status(500).json({error:'Unexpected server error'});});
 
 export default app;

@@ -1,6 +1,6 @@
 # BookLeaf Author Support Portal
 
-The repository contains two independent applications for separate Vercel projects:
+The repository contains two independent applications that can run locally or be hosted separately:
 
 - `client/` — React and Vite author and operations portals.
 - `server/` — Express REST API, MongoDB models, and sample data.
@@ -21,41 +21,17 @@ npm run dev
 
 Open <http://localhost:5173>. Vite proxies `/api` to Express at <http://localhost:5001>. Demo password: `demo123`; operations account: `admin@bookleaf.com`.
 
-The root npm scripts are local development helpers. Vercel installs each project from its own root directory.
+## Deploy on Render
 
-## Deploy to Vercel
+The included `render.yaml` deploys one web service from the repository root. Express serves both the built client and `/api` routes from the same origin, avoiding cross-origin session-cookie configuration. In Render, create a Blueprint from this repository and provide a MongoDB Atlas connection string when prompted for `MONGODB_URI`. Render generates `SESSION_SECRET` automatically. AI features are optional; add `OPENAI_API_KEY` in the service environment to enable them.
 
-Import the same Git repository twice in Vercel. Set the **Root Directory** separately for each project:
-
-| Project | Root Directory | Build configuration |
-|---|---|---|
-| Frontend | `client` | Vite build; output directory `dist` |
-| API | `server` | Express entry point `app.js` |
-
-The API is exported from `server/app.js`. `server/dev.js` is only for local development; the Vercel deployment does not seed the database on startup.
-
-Set these project environment variables:
-
-| Project | Variable | Value |
-|---|---|---|
-| Frontend | `VITE_API_URL` | API project's origin, e.g. `https://bookleaf-api.vercel.app` (no trailing slash) |
-| API | `MONGODB_URI` | MongoDB Atlas connection string |
-| API | `SESSION_SECRET` | Long random secret |
-| API | `CORS_ORIGINS` | Exact frontend origin; comma-separated if allowing additional origins |
-| API | `COOKIE_SECURE` | `true` |
-| API | `SESSION_COOKIE_SAME_SITE` | `none` for separate default `*.vercel.app` project domains |
-| API | `OPENAI_API_KEY` | Optional; enables AI classification and response drafts |
-| API | `OPENAI_MODEL` | Optional; defaults to `gpt-4o-mini` |
-
-For the most reliable session cookies, use custom frontend and API domains under the same parent domain (such as `authors.example.com` and `api.example.com`) and set `SESSION_COOKIE_SAME_SITE=strict`. Browsers can restrict cookies between separate Vercel domains.
-
-Seed the hosted database once from a machine that can reach MongoDB Atlas:
+After the service is live, seed its database once from a machine that can reach Atlas:
 
 ```sh
 MONGODB_URI="your-atlas-connection-string" DEMO_PASSWORD="demo123" npm run seed
 ```
 
-Allow the API deployment to connect to your MongoDB host. Vercel Functions limit request payload size, so attachments are capped at 3 MB combined to leave room for Base64 encoding.
+Attachments are capped at 3 MB combined to leave room for Base64 encoding. The free web service sleeps after 15 minutes without traffic and may take about a minute to wake; use a paid instance for a demo that needs to stay responsive.
 
 ## Sample accounts
 
@@ -64,10 +40,11 @@ The supplied dataset in `server/data.json` seeds 10 authors and 18 books. Each a
 ## Project layout
 
 - `client/src/` — React author dashboard, support center, operations console, and styles.
-- `client/vercel.json` — SPA fallback for frontend deep links.
 - `client/.env.example` — frontend API URL example.
-- `server/app.js` — Express API entry point for Vercel.
+- `render.yaml` — single-service deployment configuration.
+- `server/app.js` — Express API and production static-file application.
 - `server/dev.js` — local API bootstrap.
+- `server/start.js` — production server startup; it does not seed the database.
 - `server/models.js` — Mongoose schemas and indexes.
 - `server/ticketRules.js` — AI classification and deterministic fallback.
 - `server/knowledgeBase.js` — BookLeaf policy context for draft replies.

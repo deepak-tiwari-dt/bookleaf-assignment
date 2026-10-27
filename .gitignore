@@ -1,6 +1,5 @@
 node_modules/
 dist/
-.vercel/
 .env
 server/uploads/
 npm-debug.log*
