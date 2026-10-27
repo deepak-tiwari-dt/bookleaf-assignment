@@ -30,7 +30,9 @@ All sample authors can sign in using the email recorded in `data.json` and passw
 ## Project layout
 
 - `src/` - React SPA, author dashboard, ticket center, operations console, and styles.
-- `server/index.js` - Express app, MongoDB connection, session middleware, and REST routes.
+- `server/app.js` - Express app, MongoDB connection helper, session middleware, and REST routes.
+- `server/index.js` - local Express bootstrap and sample-data seed.
+- `netlify/functions/api.js` - Netlify Functions entry point for the Express API.
 - `server/models.js` - Mongoose author/book and ticket/message/note schemas and indexes.
 - `server/ticketRules.js` - AI classification/priority scoring with deterministic fallback.
 - `server/knowledgeBase.js` - compact policy context for reply drafting.
@@ -39,7 +41,7 @@ All sample authors can sign in using the email recorded in `data.json` and passw
 
 Sessions are stored in MongoDB using `connect-mongo`; cookies are HTTP-only and SameSite Strict. Author routes scope books and tickets to the logged-in author's ID. Operations-only status/category/priority changes, assignment, drafts, and private notes are protected by role middleware. Ticket lists sort by priority then age and refresh in the client every 15 seconds.
 
-Ticket attachments are stored as binary data on the ticket in MongoDB and can only be downloaded by its author or an admin. The form accepts up to 3 PDF, JPEG, PNG, or WebP files, 2 MB each and 5 MB combined. The API checks file signatures, not only browser-supplied MIME types. For production at larger scale, move file bytes to private object storage and retain only metadata in MongoDB.
+Ticket attachments are stored as binary data on the ticket in MongoDB and can only be downloaded by its author or an admin. The form accepts up to 3 PDF, JPEG, PNG, or WebP files, 2 MB each and 4 MB combined. The API checks file signatures, not only browser-supplied MIME types. For production at larger scale, move file bytes to private object storage and retain only metadata in MongoDB.
 
 ## REST API
 
@@ -69,6 +71,18 @@ Set `OPENAI_API_KEY` to enable server-side OpenAI Chat Completions for category/
 ## Deployment
 
 `Dockerfile` builds the React bundle and runs the Express/MongoDB application in one container. `docker-compose.yml` includes a MongoDB service for local deployment. For a public demo, deploy the container and a managed MongoDB database with a persistent connection URI, HTTPS, a long random `SESSION_SECRET`, and optional server-side `OPENAI_API_KEY`. The app does not include a hosting provider account or publish itself; configure these values in your chosen host before sharing a live URL.
+
+### Deploy to Netlify
+
+`netlify.toml` builds the Vite app to `dist`, deploys the Express API as a Netlify Function, rewrites `/api/*` to that function, and falls back to `index.html` for SPA routes. Connect the repository to Netlify and deploy from the project root. Set these in **Project configuration → Environment variables** with Functions scope: `MONGODB_URI` (Atlas connection string), `SESSION_SECRET` (long random value), and `COOKIE_SECURE=true`. Optionally set `OPENAI_API_KEY` and `OPENAI_MODEL`. Do not put secrets in `netlify.toml`; Netlify configuration-file variables are not exposed to Functions at runtime.
+
+Seed the Netlify database once from a trusted machine with network access to MongoDB Atlas:
+
+```sh
+MONGODB_URI="your-atlas-connection-string" DEMO_PASSWORD="demo123" npm run seed
+```
+
+The Function does not seed on each cold start. Confirm Atlas network access allows Netlify Function connections. Netlify Functions have a 6 MB buffered request/response limit, so the upload limit is 4 MB combined to leave room for Base64 encoding overhead.
 
 ## Known limitations
 
