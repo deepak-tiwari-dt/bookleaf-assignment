@@ -3,7 +3,7 @@ services:
     name: bookleaf-support-portal
     runtime: node
     plan: free
-    buildCommand: npm ci && npm --prefix client ci && npm --prefix server ci && npm --prefix client run build
+    buildCommand: npm --prefix client ci --include=dev && npm --prefix server ci --omit=dev && npm --prefix client run build
     startCommand: npm start
     healthCheckPath: /api/health
     envVars:
