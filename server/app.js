@@ -21,18 +21,22 @@ export function connectDatabase(){
   return connectionPromise;
 }
 
+const normalizeOrigin=value=>{
+  try{return new URL(value).origin;}catch{return null;}
+};
 const allowedOrigins=new Set([
   'http://localhost:5173',
   'http://127.0.0.1:5173',
   ...(process.env.CORS_ORIGINS||'').split(',').map(origin=>origin.trim()).filter(Boolean)
-]);
+].map(normalizeOrigin).filter(Boolean));
 app.disable('x-powered-by');
 app.set('trust proxy', 1);
 app.use((req,res,next)=>{
   const origin=req.get('origin');
   if(origin){
-    const sameOrigin=origin===`${req.protocol}://${req.get('host')}`;
-    if(!sameOrigin&&!allowedOrigins.has(origin))return res.status(403).json({error:'This client origin is not allowed'});
+    const normalizedOrigin=normalizeOrigin(origin);
+    const sameOrigin=normalizedOrigin===normalizeOrigin(`${req.protocol}://${req.get('host')}`);
+    if(!sameOrigin&&!allowedOrigins.has(normalizedOrigin))return res.status(403).json({error:'This client origin is not allowed'});
     if(!sameOrigin){
       res.setHeader('Access-Control-Allow-Origin',origin);
       res.setHeader('Access-Control-Allow-Credentials','true');
