@@ -1,6 +1,6 @@
 # BookLeaf Author Support Portal
 
-The repository contains two independent applications that can run locally or be hosted separately:
+The repository contains two applications: a React/Vite client in `client/` and an Express API in `server/`. Netlify publishes the client and runs the API through a Function, while local development runs them as separate processes.
 
 - `client/` — React and Vite author and operations portals.
 - `server/` — Express REST API, MongoDB models, and sample data.
@@ -21,17 +21,26 @@ npm run dev
 
 Open <http://localhost:5173>. Vite proxies `/api` to Express at <http://localhost:5001>. Demo password: `demo123`; operations account: `admin@bookleaf.com`.
 
-## Deploy on Render
+## Deploy on Netlify
 
-The included `render.yaml` deploys one web service from the repository root. Express serves both the built client and `/api` routes from the same origin, avoiding cross-origin session-cookie configuration. In Render, create a Blueprint from this repository and provide a MongoDB Atlas connection string when prompted for `MONGODB_URI`. Render generates `SESSION_SECRET` automatically. AI features are optional; add `OPENAI_API_KEY` in the service environment to enable them.
+Connect the repository to Netlify and use the repository root as the base directory. `netlify.toml` builds `client/`, publishes `client/dist`, routes `/api/*` to the Express Function, and sends other paths to the SPA. The Netlify Function entry point is `netlify/functions/api.js`.
 
-After the service is live, seed its database once from a machine that can reach Atlas:
+Set these environment variables in the Netlify site settings:
+
+- `MONGODB_URI` — MongoDB Atlas connection string. Do not use the localhost URI from `server/.env.example`.
+- `SESSION_SECRET` — long random secret.
+- `COOKIE_SECURE=true` and `SESSION_COOKIE_SAME_SITE=lax` for the same-origin site and API.
+- `CORS_ORIGINS` — the exact deployed Netlify site origin, without a trailing slash.
+- `OPENAI_API_KEY` — optional; enables AI classification and response drafts.
+- `OPENAI_MODEL` — optional; defaults to `gpt-4o-mini`.
+
+Seed the hosted database once from a machine that can reach Atlas:
 
 ```sh
 MONGODB_URI="your-atlas-connection-string" DEMO_PASSWORD="demo123" npm run seed
 ```
 
-Attachments are capped at 3 MB combined to leave room for Base64 encoding. The free web service sleeps after 15 minutes without traffic and may take about a minute to wake; use a paid instance for a demo that needs to stay responsive.
+Attachments are capped at 3 MB combined to leave room for Base64 encoding.
 
 ## Sample accounts
 
@@ -41,10 +50,10 @@ The supplied dataset in `server/data.json` seeds 10 authors and 18 books. Each a
 
 - `client/src/` — React author dashboard, support center, operations console, and styles.
 - `client/.env.example` — frontend API URL example.
-- `render.yaml` — single-service deployment configuration.
-- `server/app.js` — Express API and production static-file application.
+- `netlify.toml` — client build, API function, and SPA routing configuration.
+- `netlify/functions/api.js` — Express-to-function adapter.
+- `server/app.js` — Express API application.
 - `server/dev.js` — local API bootstrap.
-- `server/start.js` — production server startup; it does not seed the database.
 - `server/models.js` — Mongoose schemas and indexes.
 - `server/ticketRules.js` — AI classification and deterministic fallback.
 - `server/knowledgeBase.js` — BookLeaf policy context for draft replies.

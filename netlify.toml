@@ -1,0 +1,22 @@
+[build]
+  command = "npm --prefix client ci --include=dev && npm --prefix client run build"
+  publish = "client/dist"
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+  external_node_modules = ["express", "express-session", "serverless-http", "mongoose", "connect-mongo", "bcryptjs"]
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/api/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

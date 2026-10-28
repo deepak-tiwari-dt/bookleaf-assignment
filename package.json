@@ -8,8 +8,16 @@
     "dev:server": "npm --prefix server run dev",
     "dev:client": "npm --prefix client run dev",
     "build": "npm --prefix client run build",
-    "start": "npm --prefix server start",
     "seed": "npm --prefix server run seed"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "connect-mongo": "^5.1.0",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "express-session": "^1.18.1",
+    "mongoose": "^8.9.5",
+    "serverless-http": "^4.0.0"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
